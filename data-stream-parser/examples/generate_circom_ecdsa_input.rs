@@ -1,4 +1,4 @@
-use preprocessor::circom::input::Input;
+use data_stream_parser::circom::input::Input;
 use secp256k1::hashes::sha256;
 use secp256k1::{generate_keypair, Message};
 
