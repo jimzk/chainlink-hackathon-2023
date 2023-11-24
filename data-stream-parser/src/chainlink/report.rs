@@ -106,6 +106,11 @@ impl FullReport {
         }
         (recovered, msg)
     }
+
+    pub fn report(&self) -> V2Report {
+        let report = V2Report::abi_decode(&self.report_blob);
+        report
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,12 +1,7 @@
 use std::{fs::File, process::Command};
 
-use secp256k1::Message;
-
 use crate::{
-    chainlink::{
-        client::get_data_stream_report,
-        report::{FullReport, V2Report},
-    },
+    chainlink::{client::get_data_stream_report, report::FullReport},
     circom::batch_input,
 };
 
@@ -33,7 +28,7 @@ fn main() {
             .trim_start_matches("0x");
 
         let full_report = FullReport::abi_decode(&hex::decode(data).unwrap());
-        let report = V2Report::abi_decode(&full_report.report_blob);
+        let _report = full_report.report();
         let (signature_pubkeys, digest) = full_report.recover_publickey();
         batch_input.add(
             signature_pubkeys[0].0,
