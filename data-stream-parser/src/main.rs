@@ -38,7 +38,7 @@ fn main() {
         batch_input.add(
             signature_pubkeys[0].0,
             signature_pubkeys[0].1,
-            Message::from_digest(digest),
+            digest.clone(),
         )
     }
     // let json_string = serde_json::to_string_pretty(&batch_input).unwrap();

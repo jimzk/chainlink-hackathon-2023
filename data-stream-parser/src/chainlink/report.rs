@@ -78,7 +78,7 @@ impl FullReport {
     }
 
     // https://github.com/smartcontractkit/chainlink/blob/e623afd8079d0875301df33acf74f75e989abcde/contracts/src/v0.8/llo-feeds/Verifier.sol#L284-L309
-    pub fn recover_publickey(&self) -> (Vec<(Signature, PublicKey)>, [u8; 32]) {
+    pub fn recover_publickey(&self) -> (Vec<(Signature, PublicKey)>, Message) {
         let hashed_report = {
             let mut hasher = <Keccak256 as Digest>::new();
             Digest::update(&mut hasher, &self.report_blob);
@@ -104,7 +104,7 @@ impl FullReport {
             let pubkey = signature.recover(&msg).unwrap();
             recovered.push((signature.to_standard(), pubkey));
         }
-        (recovered, hash.into())
+        (recovered, msg)
     }
 }
 
