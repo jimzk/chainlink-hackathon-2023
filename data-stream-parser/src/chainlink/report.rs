@@ -1,6 +1,7 @@
 use std::{fmt, str::FromStr};
 
-use ethabi::{ethereum_types::U256, ParamType, Token};
+use alloy_primitives::I256;
+use alloy_sol_types::{sol, SolValue};
 use num_bigint::{BigInt, BigUint};
 use secp256k1::{
     ecdsa::{RecoverableSignature, RecoveryId, Signature},
@@ -10,7 +11,7 @@ use sha3::{Digest, Keccak256};
 
 pub type Bytes32 = [u8; 32];
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FullReport {
     pub report_context: [Bytes32; 3],
     pub report_blob: Vec<u8>,
@@ -19,110 +20,77 @@ pub struct FullReport {
     pub raw_vs: Bytes32,
 }
 
-impl FullReport {
-    fn get_abi_type() -> Vec<ParamType> {
-        let mut types: Vec<ParamType> = vec![];
-        types.push(ParamType::FixedArray(
-            Box::new(ParamType::FixedBytes(32)),
-            3,
-        ));
-        types.push(ParamType::Bytes);
-        types.push(ParamType::Array(Box::new(ParamType::FixedBytes(32))));
-        types.push(ParamType::Array(Box::new(ParamType::FixedBytes(32))));
-        types.push(ParamType::FixedBytes(32));
-        types
+sol! {
+    struct SolFullReport {
+        bytes32[3] report_context;
+        bytes report_blob;
+        bytes32[] raw_rs;
+        bytes32[] raw_ss;
+        bytes32 raw_vs;
     }
+}
 
-    fn to_abi_token(&self) -> Vec<Token> {
-        let mut tokens = vec![];
-        let report_context = self
-            .report_context
-            .into_iter()
-            .map(|t| Token::FixedBytes(t.to_vec()))
-            .collect::<Vec<Token>>();
-        tokens.push(Token::FixedArray(report_context));
-        let report_blob = Token::Bytes(self.report_blob.clone());
-        tokens.push(report_blob);
-        let raw_rs = self
-            .raw_rs
-            .iter()
-            .map(|t| Token::FixedBytes(t.clone().to_vec()))
-            .collect::<Vec<Token>>();
-        tokens.push(Token::Array(raw_rs));
-        let raw_ss = self
-            .raw_ss
-            .iter()
-            .map(|t| Token::FixedBytes(t.to_vec()))
-            .collect::<Vec<Token>>();
-        tokens.push(Token::Array(raw_ss));
-        let raw_vs = Token::FixedBytes(self.raw_vs.to_vec());
-        tokens.push(raw_vs);
-        tokens
-    }
-
-    fn from_abi_token(tokens: Vec<Token>) -> Self {
-        let report_context: Vec<[u8; 32]> = tokens
-            .get(0)
-            .unwrap()
-            .clone()
-            .into_fixed_array()
-            .unwrap()
-            .into_iter()
-            .map(|r| r.into_fixed_bytes().unwrap().try_into().unwrap())
-            .collect();
-        let report_blob = tokens.get(1).unwrap().clone().into_bytes().unwrap();
-        let raw_rs = tokens
-            .get(2)
-            .unwrap()
-            .clone()
-            .into_array()
-            .unwrap()
-            .into_iter()
-            .map(|r| r.into_fixed_bytes().unwrap().try_into().unwrap())
-            .collect();
-        let raw_ss = tokens
-            .get(3)
-            .unwrap()
-            .clone()
-            .into_array()
-            .unwrap()
-            .into_iter()
-            .map(|r| r.into_fixed_bytes().unwrap().try_into().unwrap())
-            .collect();
-        let raw_vs = tokens
-            .get(4)
-            .unwrap()
-            .clone()
-            .into_fixed_bytes()
-            .unwrap()
-            .try_into()
-            .unwrap();
-
+impl From<SolFullReport> for FullReport {
+    fn from(value: SolFullReport) -> Self {
         FullReport {
-            report_context: report_context.try_into().unwrap(),
-            report_blob,
-            raw_rs,
-            raw_ss,
-            raw_vs,
+            report_context: value
+                .report_context
+                .into_iter()
+                .map(|r| r.into())
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            report_blob: value.report_blob,
+            raw_rs: value.raw_rs.into_iter().map(|r| r.into()).collect(),
+            raw_ss: value.raw_ss.into_iter().map(|r| r.into()).collect(),
+            raw_vs: value.raw_vs.into(),
         }
     }
+}
 
+impl From<FullReport> for SolFullReport {
+    fn from(value: FullReport) -> Self {
+        SolFullReport {
+            report_context: value
+                .report_context
+                .into_iter()
+                .map(|r| r.into())
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            report_blob: value.report_blob,
+            raw_rs: value.raw_rs.into_iter().map(|r| r.into()).collect(),
+            raw_ss: value.raw_ss.into_iter().map(|r| r.into()).collect(),
+            raw_vs: value.raw_vs.into(),
+        }
+    }
+}
+
+impl FullReport {
     pub fn abi_encode(&self) -> Vec<u8> {
-        ethabi::encode(&self.to_abi_token())
+        let sol_type = SolFullReport::from(self.clone());
+        sol_type.abi_encode_params()
     }
 
     pub fn abi_decode(data: &[u8]) -> Self {
-        let tokens = ethabi::decode(&Self::get_abi_type(), data).unwrap();
-        Self::from_abi_token(tokens)
+        let sol_type = SolFullReport::abi_decode_params(data, true).unwrap();
+        sol_type.into()
     }
 
     // https://github.com/smartcontractkit/chainlink/blob/e623afd8079d0875301df33acf74f75e989abcde/contracts/src/v0.8/llo-feeds/Verifier.sol#L284-L309
-    pub fn recover_publickey(&self) -> (Vec<(Signature, PublicKey)>, [u8;32]) {
-        let mut hasher = <Keccak256 as Digest>::new();
-        Digest::update(&mut hasher, &self.report_context[0]);
-        let hash = Digest::finalize(hasher);
-        // hasher::<as Digest>::update(&self.report_blob);
-        // let hash = hasher.finalize();
+    pub fn recover_publickey(&self) -> (Vec<(Signature, PublicKey)>, [u8; 32]) {
+        let hashed_report = {
+            let mut hasher = <Keccak256 as Digest>::new();
+            Digest::update(&mut hasher, &self.report_blob);
+            Digest::finalize(hasher)
+        };
+        let hash = {
+            let content: ([u8; 32], _) = (hashed_report.into(), self.report_context);
+            let abi_encoded = content.abi_encode_packed();
+            let mut hasher = <Keccak256 as Digest>::new();
+            Digest::update(&mut hasher, &abi_encoded);
+            Digest::finalize(hasher)
+        };
         let msg = Message::from_digest_slice(&hash).unwrap();
         let mut recovered = vec![];
         for i in 0..self.raw_rs.len() {
@@ -140,7 +108,7 @@ impl FullReport {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct V2Report {
     feed_id: Bytes32,
     valid_from_timestamp: u32,
@@ -149,6 +117,47 @@ pub struct V2Report {
     link_fee: BigUint,
     expires_at: u32,
     benchmark_price: BigInt,
+}
+
+sol! {
+    struct SolV2Report {
+        bytes32 feed_id;
+        uint32  valid_from_timestamp;
+        uint32  observations_timestamp;
+        uint192 native_fee;
+        uint192 link_fee;
+        uint32  expires_at;
+        int192  benchmark_price;
+    }
+}
+
+impl From<SolV2Report> for V2Report {
+    fn from(value: SolV2Report) -> Self {
+        V2Report {
+            feed_id: value.feed_id.into(),
+            valid_from_timestamp: value.valid_from_timestamp,
+            observations_timestamp: value.observations_timestamp,
+            native_fee: BigUint::from_str(&value.native_fee.to_string()).unwrap(),
+            link_fee: BigUint::from_str(&value.link_fee.to_string()).unwrap(),
+            expires_at: value.expires_at,
+            benchmark_price: BigInt::from_str(&value.benchmark_price.to_string()).unwrap(),
+        }
+    }
+}
+
+impl From<V2Report> for SolV2Report {
+    fn from(value: V2Report) -> Self {
+        use alloy_primitives::U256;
+        SolV2Report {
+            feed_id: value.feed_id.into(),
+            valid_from_timestamp: value.valid_from_timestamp,
+            observations_timestamp: value.observations_timestamp,
+            native_fee: U256::from_str(&value.native_fee.to_str_radix(10)).unwrap(),
+            link_fee: U256::from_str(&value.link_fee.to_str_radix(10)).unwrap(),
+            expires_at: value.expires_at,
+            benchmark_price: I256::from_str(&value.benchmark_price.to_str_radix(10)).unwrap(),
+        }
+    }
 }
 
 impl fmt::Display for V2Report {
@@ -177,73 +186,14 @@ impl fmt::Display for V2Report {
 }
 
 impl V2Report {
-    fn get_abi_type() -> Vec<ParamType> {
-        let mut types: Vec<ParamType> = vec![];
-        types.push(ParamType::FixedBytes(32));
-        types.push(ParamType::Uint(32));
-        types.push(ParamType::Uint(32));
-        types.push(ParamType::Uint(192));
-        types.push(ParamType::Uint(192));
-        types.push(ParamType::Uint(32));
-        types.push(ParamType::Int(192));
-        types
-    }
-
-    fn to_abi_token(&self) -> Vec<Token> {
-        let feed_id = Token::FixedBytes(self.feed_id.to_vec());
-        let valid_from_timestamp = Token::Uint(self.valid_from_timestamp.into());
-        let observations_timestamp = Token::Uint(self.observations_timestamp.into());
-        let native_fee =
-            Token::Uint(U256::from_dec_str(&self.native_fee.to_str_radix(10)).unwrap());
-        let link_fee = Token::Uint(U256::from_dec_str(&self.link_fee.to_str_radix(10)).unwrap());
-        let expires_at = Token::Uint(self.expires_at.into());
-        let benchmark_price =
-            Token::Uint(U256::from_dec_str(&self.benchmark_price.to_str_radix(10)).unwrap());
-        vec![
-            feed_id,
-            valid_from_timestamp,
-            observations_timestamp,
-            native_fee,
-            link_fee,
-            expires_at,
-            benchmark_price,
-        ]
-    }
-
-    fn from_abi_token(tokens: Vec<Token>) -> Self {
-        let feed_id = tokens
-            .get(0)
-            .unwrap()
-            .clone()
-            .into_fixed_bytes()
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let valid_from_timestamp = tokens.get(1).unwrap().clone().into_uint().unwrap().as_u32();
-        let observations_timestamp = tokens.get(2).unwrap().clone().into_uint().unwrap().as_u32();
-        let native_fee = tokens.get(3).unwrap().clone().into_uint().unwrap();
-        let link_fee = tokens.get(4).unwrap().clone().into_uint().unwrap();
-        let expires_at = tokens.get(5).unwrap().clone().into_uint().unwrap().as_u32();
-        let benchmark_price = tokens.get(6).unwrap().clone().into_int().unwrap();
-
-        V2Report {
-            feed_id,
-            observations_timestamp,
-            benchmark_price: BigInt::from_str(&benchmark_price.to_string()).unwrap(),
-            valid_from_timestamp,
-            expires_at,
-            link_fee: BigUint::from_str(&link_fee.to_string()).unwrap(),
-            native_fee: BigUint::from_str(&native_fee.to_string()).unwrap(),
-        }
-    }
-
     pub fn abi_encode(&self) -> Vec<u8> {
-        ethabi::encode(&self.to_abi_token())
+        let sol_type = SolV2Report::from(self.clone());
+        sol_type.abi_encode_params()
     }
 
     pub fn abi_decode(data: &[u8]) -> Self {
-        let tokens = ethabi::decode(&Self::get_abi_type(), data).unwrap();
-        Self::from_abi_token(tokens)
+        let sol_type = SolV2Report::abi_decode_params(data, true).unwrap();
+        sol_type.into()
     }
 }
 
