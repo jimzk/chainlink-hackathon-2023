@@ -77,14 +77,6 @@ fn now_timestamp_millis() -> i64 {
     since_the_epoch.as_millis() as i64
 }
 
-fn now_timestamp_secs() -> i64 {
-    let start = std::time::SystemTime::now();
-    let since_the_epoch = start
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("Time went backwards");
-    since_the_epoch.as_secs() as i64
-}
-
 #[cfg(test)]
 mod tests {
     use super::get_data_stream_report;
