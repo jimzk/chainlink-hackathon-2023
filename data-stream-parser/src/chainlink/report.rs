@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use ethabi::{ethereum_types::U256, ParamType, Token};
 use num_bigint::{BigInt, BigUint};
@@ -12,11 +12,11 @@ pub type Bytes32 = [u8; 32];
 
 #[derive(Debug)]
 pub struct FullReport {
-    report_context: [Bytes32; 3],
-    report_blob: Vec<u8>,
-    raw_rs: Vec<Bytes32>,
-    raw_ss: Vec<Bytes32>,
-    raw_vs: Bytes32,
+    pub report_context: [Bytes32; 3],
+    pub report_blob: Vec<u8>,
+    pub raw_rs: Vec<Bytes32>,
+    pub raw_ss: Vec<Bytes32>,
+    pub raw_vs: Bytes32,
 }
 
 impl FullReport {
@@ -117,7 +117,7 @@ impl FullReport {
     }
 
     // https://github.com/smartcontractkit/chainlink/blob/e623afd8079d0875301df33acf74f75e989abcde/contracts/src/v0.8/llo-feeds/Verifier.sol#L284-L309
-    pub fn recover_publickey(&self) -> Vec<(Signature, PublicKey)> {
+    pub fn recover_publickey(&self) -> (Vec<(Signature, PublicKey)>, [u8;32]) {
         let mut hasher = <Keccak256 as Digest>::new();
         Digest::update(&mut hasher, &self.report_context[0]);
         let hash = Digest::finalize(hasher);
@@ -136,7 +136,7 @@ impl FullReport {
             let pubkey = signature.recover(&msg).unwrap();
             recovered.push((signature.to_standard(), pubkey));
         }
-        recovered
+        (recovered, hash.into())
     }
 }
 
@@ -149,6 +149,31 @@ pub struct V2Report {
     link_fee: BigUint,
     expires_at: u32,
     benchmark_price: BigInt,
+}
+
+impl fmt::Display for V2Report {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let dislay = format!(
+            r#"
+{{
+    "feed_id": "{}",
+    "valid_from_timestamp": {}, 
+    "observations_timestamp": {},
+    "native_fee": "{}",
+    "link_fee": "{}", 
+    "expires_at": {}, 
+    "benchmark_price": "{}"
+}}"#,
+            hex::encode(self.feed_id),
+            self.valid_from_timestamp,
+            self.observations_timestamp,
+            self.native_fee.to_str_radix(10),
+            self.link_fee.to_str_radix(10),
+            self.expires_at,
+            self.benchmark_price.to_str_radix(10)
+        );
+        write!(f, "{}", dislay)
+    }
 }
 
 impl V2Report {
@@ -218,7 +243,6 @@ impl V2Report {
 
     pub fn abi_decode(data: &[u8]) -> Self {
         let tokens = ethabi::decode(&Self::get_abi_type(), data).unwrap();
-        println!("tokens: {:?}", tokens);
         Self::from_abi_token(tokens)
     }
 }
@@ -243,7 +267,7 @@ mod tests {
 
         println!("----------");
         let report = V2Report::abi_decode(&data);
-        println!("report: {:?}", report);
+        println!("report: {}", report);
         println!("----------");
         let decoded = report.abi_encode();
         println!("hex decoded: {:?}", hex::encode(&decoded));
