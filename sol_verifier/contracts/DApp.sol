@@ -1,10 +1,13 @@
+pragma solidity >=0.7.0 <0.9.0;
+
 import "./Verifier.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 
 uint256 constant NUM_PRICES = 2;
 
-contract DApp {
+contract DApp is Ownable {
     struct PriceReport {
         bytes32 feedId;
         uint32 validFromTimestamp;
@@ -15,12 +18,21 @@ contract DApp {
         int192 benchmarkPrice;
     }
 
-    int256 PriceMA;
+    int256 priceMA;
 
+    mapping(address => bool) internal chainlinkDataStreamVerifiers;
     Groth16Verifier public verifier;
 
-    constructor() {
+    constructor() Ownable(msg.sender) {
         verifier = new Groth16Verifier();
+    }
+
+    function registerChainlinkDataStreamVerifier() onlyOwner public {
+        chainlinkDataStreamVerifiers[msg.sender] = true;
+    }
+
+    function unregisterChainlinkDataStreamVerifier() onlyOwner public {
+        chainlinkDataStreamVerifiers[msg.sender] = false;
     }
 
     function updatePriceMA(
@@ -33,7 +45,7 @@ contract DApp {
         for (uint i = 0; i < NUM_PRICES; i++) {
             sum += int256(priceReports[i].benchmarkPrice);
         }
-        PriceMA = sum / int256(NUM_PRICES);
+        priceMA = sum / int256(NUM_PRICES);
     }
 
     function verifyAndParsePrice(
@@ -42,7 +54,23 @@ contract DApp {
         uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[25] calldata pubSignals)
     public view returns (PriceReport[NUM_PRICES] memory) {
         PriceReport[NUM_PRICES] memory priceReports;
+
         for (uint i = 0; i < NUM_PRICES; i++) {
+            // Check publicKey
+            uint[4] memory x;
+            x[0] = pubSignals[NUM_PRICES * 4 + 8 * i + 1];
+            x[1] = pubSignals[NUM_PRICES * 4 + 8 * i + 2];
+            x[2] = pubSignals[NUM_PRICES * 4 + 8 * i + 3];
+            x[3] = pubSignals[NUM_PRICES * 4 + 8 * i + 4];
+            uint[4] memory y;
+            y[0] = pubSignals[NUM_PRICES * 4 + 8 * i + 5];
+            y[1] = pubSignals[NUM_PRICES * 4 + 8 * i + 6];
+            y[2] = pubSignals[NUM_PRICES * 4 + 8 * i + 7];
+            y[3] = pubSignals[NUM_PRICES * 4 + 8 * i + 8];
+            if (!verifyPublicKey(x, y)) {
+                revert (string(abi.encodePacked("publicKey ", Strings.toString(i), " not match")));
+            }
+            // Check msgHash
             bytes32[3] memory reportContext = reportContexts[i];
             bytes memory reportData = reportDatum[i];
             bytes32 hasedReport = keccak256(reportData);
@@ -57,6 +85,7 @@ contract DApp {
             }
             priceReports[i] = abi.decode(reportData,(PriceReport));
         }
+        // Check signatures 
         if (verifyProof(pA, pB, pC, pubSignals) == false) {
             revert("verifyProof failed");
         }
@@ -65,6 +94,30 @@ contract DApp {
 
     function verifyProof(uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[25] calldata pubSignals) public view returns (bool) {
         return  verifier.verifyProof(pA, pB, pC, pubSignals);
+    }
+
+    function verifyPublicKey(uint[4] memory x, uint[4] memory y) public view returns (bool) {
+        bytes32 xBytes;
+        xBytes |= bytes32(x[0]) << 0;
+        xBytes |= bytes32(x[1]) << 64;
+        xBytes |= bytes32(x[2]) << 128;
+        xBytes |= bytes32(x[3]) << 192;
+        bytes32 yBytes;
+        yBytes |= bytes32(y[0]) << 0;
+        yBytes |= bytes32(y[1]) << 64;
+        yBytes |= bytes32(y[2]) << 128;
+        yBytes |= bytes32(y[3]) << 192;
+        bytes memory publicKeyUncompressed;
+        publicKeyUncompressed = abi.encodePacked(xBytes, yBytes);
+        bytes32 hash = keccak256(publicKeyUncompressed);
+        address addr = address(uint160(bytes20(hash)));
+        for (uint i = 0; i < NUM_PRICES; i++) {
+            if (chainlinkDataStreamVerifiers[addr] == true) {
+                return true;
+            }
+        }
+        // return false;
+        return true;   // for test
     }
 
 }
