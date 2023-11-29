@@ -14,7 +14,7 @@ fn main() {
         timestamps.push(1700448180 + i * 10);
     }
     println!(
-        "Getting {} prices from {} to {}",
+        "[Fetching {} prices from {} to {}]",
         price_num,
         timestamps[0],
         timestamps[timestamps.len() - 1]
@@ -29,7 +29,17 @@ fn main() {
             .trim_start_matches("0x");
 
         let full_report = FullReport::abi_decode(&hex::decode(data).unwrap());
-        let _report = full_report.report();
+        let report = full_report.report();
+        println!("[Fetching price at {}]", timestamp);
+        println!("price info = \n{}", report);
+        let signature = {
+            let mut bytes = [0u8; 65];
+            bytes[0..32].copy_from_slice(&full_report.raw_rs[0]);
+            bytes[32..64].copy_from_slice(&full_report.raw_ss[0]);
+            bytes[64] = full_report.raw_vs[0];
+            bytes
+        };
+        println!("signature: 0x{}", hex::encode(signature));
         let (signature_pubkeys, digest) = full_report.recover_publickey();
         batch_input.add(
             signature_pubkeys[0].0,
@@ -37,30 +47,24 @@ fn main() {
             digest.clone(),
         )
     }
-    // let json_string = serde_json::to_string_pretty(&batch_input).unwrap();
-    let filename = "./input.json";
-    let output = File::create(filename).unwrap();
-    serde_json::to_writer_pretty(output, &batch_input).unwrap();
-    println!("Parse signatures from chainlink and save to {}", filename);
+    println!();
 
-    // Generate proof
     let circom_build_dir = format!(
-        "../circom-ecdsa-batch/build/batch_ecdsa_verify_{}/",
+        "../circom-ecdsa-batch/build/batch_ecdsa_verify_{}",
         price_num
     );
-    println!("Circom_build_dir: {}", circom_build_dir);
+    println!("Circuit artifacts directory: {}", circom_build_dir);
+    println!("Starting to generate circuit proof...");
 
-    // Move input to circom build dir
-    Command::new("mv")
-        .arg("./input.json")
-        .arg(&circom_build_dir)
-        .status()
-        .expect("failed to move input.json to circom build dir");
-    println!("Move input.json to {}", &circom_build_dir);
-
+    // Generate input
+    println!("[1] Generating circuit input...");
+    let filename = format!("{}/input.json", circom_build_dir);
+    let output = File::create(&filename).unwrap();
+    serde_json::to_writer_pretty(output, &batch_input).unwrap();
+    println!("    input.json is generated");
 
     // Generate witness
-    println!("Generating witness...");
+    println!("[2] Generating witness...");
     Command::new("node")
         .current_dir(&circom_build_dir)
         .arg(format!(
@@ -75,11 +79,11 @@ fn main() {
         .arg("./witness.wtns")
         .status()
         .expect("failed to generate witness");
-    println!("Witness is generated");
+    println!("    witness.wtns is generated");
 
     // Generate zk proof
     // npx snarkjs groth16 verify ./vkey.json ./public.json ./proof.json
-    println!("Generating proof...");
+    println!("[3] Generating proof...");
     Command::new("npx")
         .current_dir(&circom_build_dir)
         .arg("snarkjs")
@@ -91,20 +95,21 @@ fn main() {
         .arg("./public.json")
         .status()
         .expect("failed to verify proof");
-    println!("Proof is generated");
+    println!("    proof.json is generated");
 
     // Verify zk proof
     // npx snarkjs groth16 verify ./vkey.json ./public.json ./proof.json
-    println!("Verifying proof...");
-    let output = Command::new("npx")
-        .current_dir(&circom_build_dir)
-        .arg("snarkjs")
-        .arg("groth16")
-        .arg("verify")
-        .arg("./vkey.json")
-        .arg("./public.json")
-        .arg("./proof.json")
-        .output()
-        .expect("failed to verify proof");
-    println!("Output: {:?}", output);
+    // println!("Verifying proof...");
+    // let output = Command::new("npx")
+    //     .current_dir(&circom_build_dir)
+    //     .arg("snarkjs")
+    //     .arg("groth16")
+    //     .arg("verify")
+    //     .arg("./vkey.json")
+    //     .arg("./public.json")
+    //     .arg("./proof.json")
+    //     .output()
+    //     .expect("failed to verify proof");
+    // println!("Output: {:?}", output);
+    println!("Done!");
 }

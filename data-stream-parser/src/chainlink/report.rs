@@ -168,8 +168,7 @@ impl From<V2Report> for SolV2Report {
 impl fmt::Display for V2Report {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let dislay = format!(
-            r#"
-{{
+            r#"{{
     "feed_id": "{}",
     "valid_from_timestamp": {}, 
     "observations_timestamp": {},
