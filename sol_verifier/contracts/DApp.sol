@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 
 uint256 constant NUM_PRICES = 2;
+uint256 constant PUB_SIGNALS_LEN = 1 + (4 + 8) * NUM_PRICES;
 
 contract DApp is Ownable {
     struct PriceReport {
@@ -38,7 +39,7 @@ contract DApp is Ownable {
     function updatePriceMA(
         bytes32[3][NUM_PRICES] memory reportContexts,
         bytes[NUM_PRICES] memory reportDatum,
-        uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[25] calldata pubSignals)
+        uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[PUB_SIGNALS_LEN] calldata pubSignals)
     public {
         PriceReport[NUM_PRICES] memory priceReports = verifyAndParsePrice(reportContexts, reportDatum, pA, pB, pC, pubSignals);
         int256 sum = 0;
@@ -51,7 +52,7 @@ contract DApp is Ownable {
     function verifyAndParsePrice(
         bytes32[3][NUM_PRICES] memory reportContexts,
         bytes[NUM_PRICES] memory reportDatum,
-        uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[25] calldata pubSignals)
+        uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[PUB_SIGNALS_LEN] calldata pubSignals)
     public view returns (PriceReport[NUM_PRICES] memory) {
         PriceReport[NUM_PRICES] memory priceReports;
 
@@ -92,7 +93,7 @@ contract DApp is Ownable {
         return priceReports;
     }
 
-    function verifyProof(uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[25] calldata pubSignals) public view returns (bool) {
+    function verifyProof(uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[PUB_SIGNALS_LEN] calldata pubSignals) public view returns (bool) {
         return  verifier.verifyProof(pA, pB, pC, pubSignals);
     }
 
