@@ -1,5 +1,7 @@
 use std::{fs::File, process::Command};
 
+use serde_json::Value;
+
 use crate::{
     chainlink::{client::get_data_stream_report, report::FullReport},
     circom::batch_input,
@@ -21,6 +23,8 @@ fn main() {
     );
     let feed_id = "0x0002191c50b7bdaf2cb8672453141946eea123f8baeaa8d2afa4194b6955e683";
     let mut batch_input = batch_input::BatchInput::new();
+    let mut report_contexts = vec![];
+    let mut reports_blobs = vec![];
     for timestamp in timestamps {
         let value = get_data_stream_report(feed_id, timestamp);
         let data = value["report"]["fullReport"]
@@ -30,6 +34,18 @@ fn main() {
 
         let full_report = FullReport::abi_decode(&hex::decode(data).unwrap());
         let report = full_report.report();
+        // Construct json for solidity call
+        let mut reports_contexts = vec![];
+        for i in 0..3 {
+            let report_context = format!("0x{}", hex::encode(&full_report.report_context[i]));
+            reports_contexts.push(Value::String(report_context));
+        }
+        report_contexts.push(Value::Array(reports_contexts));
+        reports_blobs.push(Value::String(format!(
+            "0x{}",
+            hex::encode(&full_report.report_blob)
+        )));
+
         println!("[Fetching price at {}]", timestamp);
         println!("price info = \n{}", report);
         let signature = {
@@ -47,6 +63,12 @@ fn main() {
             digest.clone(),
         )
     }
+    let report_contexts = Value::Array(report_contexts);
+    let reports_blobs = Value::Array(reports_blobs);
+    let reports_json = Value::Array(vec![report_contexts, reports_blobs]);
+    let filename = format!("./reports.json",);
+    let output = File::create(&filename).unwrap();
+    serde_json::to_writer_pretty(output, &reports_json).unwrap();
     println!();
 
     let circom_build_dir = format!(
