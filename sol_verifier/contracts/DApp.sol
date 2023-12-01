@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0
 pragma solidity >=0.7.0 <0.9.0;
 
 import "./Verifier.sol";
@@ -6,7 +7,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 
 uint256 constant NUM_PRICES = 2;
-uint256 constant PUB_SIGNALS_LEN = 27;
+uint256 constant PUB_SIGNALS_LEN = 3;
 
 contract DApp is Ownable {
     struct PriceReport {
@@ -64,28 +65,25 @@ contract DApp is Ownable {
         bytes[NUM_PRICES] memory reportDatum,
         uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[PUB_SIGNALS_LEN] calldata pubSignals)
     public view returns (PriceReport[NUM_PRICES] memory) {
-        PriceReport[NUM_PRICES] memory priceReports;
-
-        // concat msgHash
-        bytes memory aggregatedMsgHashs;
+        // Check msgHash
+        bytes memory msgHashes;
         for (uint i = 0; i < NUM_PRICES; i++) {
             bytes32[3] memory reportContext = reportContexts[i];
             bytes memory reportData = reportDatum[i];
             bytes32 hasedReport = keccak256(reportData);
             bytes32 msgHash = keccak256(abi.encodePacked(hasedReport, reportContext));
-            aggregatedMsgHashs = abi.encodePacked(aggregatedMsgHashs, msgHash);
+            msgHashes = abi.encodePacked(msgHashes, msgHash);
         }
-        bytes32 aggregatedMsgHashsHash = sha256(aggregatedMsgHashs);
-        bytes16 aggregatedMsgHashsHashFirstHalf = bytes16(aggregatedMsgHashsHash);
-        bytes16 aggregatedMsgHashsHashSecondHalf = bytes16(aggregatedMsgHashsHash << 128);
-        aggregatedMsgHashsHashFirstHalf = reverseBinaryBytes16(aggregatedMsgHashsHashFirstHalf);
-        aggregatedMsgHashsHashSecondHalf = reverseBinaryBytes16(aggregatedMsgHashsHashSecondHalf);
-        bytes16 expectedFirstHalf = bytes16(bytes32(uint256(pubSignals[1]) << 128));
-        bytes16 expectedSecondHalf = bytes16(bytes32(uint256(pubSignals[2]) << 128));
-        if (aggregatedMsgHashsHashFirstHalf != expectedFirstHalf || aggregatedMsgHashsHashSecondHalf != expectedSecondHalf) {
+        bytes32 finalHash = sha256(msgHashes);
+        bytes16 hashFirstHalf = reverseBinaryBytes16(bytes16(finalHash));
+        bytes16 hashSecondHalf = reverseBinaryBytes16(bytes16(finalHash << 128));
+        bytes16 expectedFirstHalf = bytes16(bytes32(pubSignals[1]) << 128);
+        bytes16 expectedSecondHalf = bytes16(bytes32(pubSignals[2]) << 128);
+        if (hashFirstHalf != expectedFirstHalf || hashSecondHalf != expectedSecondHalf) {
             revert("aggregatedMsgHashsHash not match");
         }
 
+        PriceReport[NUM_PRICES] memory priceReports;
         for (uint i = 0; i < NUM_PRICES; i++) {
             bytes memory reportData = reportDatum[i];
             priceReports[i] = abi.decode(reportData,(PriceReport));
