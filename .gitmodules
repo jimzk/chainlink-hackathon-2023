@@ -1,4 +1,0 @@
-[submodule "circom-ecdsa-batch"]
-	path = circom-ecdsa-batch
-	url = git@github.com:jimzk/circom-ecdsa-batch.git
-	branch = master

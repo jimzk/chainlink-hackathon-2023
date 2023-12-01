@@ -1,0 +1,18 @@
+{
+  "name": "batch-ecdsa",
+  "version": "0.0.1",
+  "description": "batch ecdsa verification in circom",
+  "main": "index.js",
+  "scripts": {
+    "build:wasm": "cd ./scripts && NODE_OPTIONS=--max_old_space_size=56000 ./wasm_build.sh"
+  },
+  "repository": "git@github.com:jimzk/chainlink-hackathon-2023.git",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "circomlib": "^2.0.5",
+    "ethers": "^5.5.2",
+    "ffjavascript": "^0.2.62",
+    "snarkjs": "^0.7.2"
+  }
+}
