@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Debug, Clone, Copy)]
 pub struct U256([u8; 32]);
 
-// Into number representation u64
+// Into number representation u64 (Big endian)
 impl From<U256> for [u64; 4] {
     fn from(value: U256) -> Self {
         let value: [u8; 32] = value.0;
@@ -44,6 +44,7 @@ impl U256 {
         Self(value)
     }
 
+    // Big Endian
     pub fn serialize(&self) -> [u8; 32] {
         self.0
     }
