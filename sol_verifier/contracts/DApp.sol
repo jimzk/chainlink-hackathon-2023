@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 
 uint256 constant NUM_PRICES = 2;
-uint256 constant PUB_SIGNALS_LEN = 1 + (4 + 8) * NUM_PRICES;
+uint256 constant PUB_SIGNALS_LEN = 27;
 
 contract DApp is Ownable {
     struct PriceReport {
@@ -49,6 +49,16 @@ contract DApp is Ownable {
         priceMA = sum / int256(NUM_PRICES);
     }
 
+    function reverseBinaryBytes16(bytes16 data) public pure returns (bytes16) {
+        uint128 resultUint = 0;
+        for (uint8 i = 0; i < 128; i++) {
+            if ((uint128(data) & (1 << i)) != 0) {
+                resultUint |= uint128(1) << (127 - i);
+            }
+        }
+        return bytes16(resultUint);
+    }
+
     function verifyAndParsePrice(
         bytes32[3][NUM_PRICES] memory reportContexts,
         bytes[NUM_PRICES] memory reportDatum,
@@ -56,37 +66,32 @@ contract DApp is Ownable {
     public view returns (PriceReport[NUM_PRICES] memory) {
         PriceReport[NUM_PRICES] memory priceReports;
 
+        // concat msgHash
+        bytes memory aggregatedMsgHashs;
         for (uint i = 0; i < NUM_PRICES; i++) {
-            // Check publicKey
-            uint[4] memory x;
-            x[0] = pubSignals[NUM_PRICES * 4 + 8 * i + 1];
-            x[1] = pubSignals[NUM_PRICES * 4 + 8 * i + 2];
-            x[2] = pubSignals[NUM_PRICES * 4 + 8 * i + 3];
-            x[3] = pubSignals[NUM_PRICES * 4 + 8 * i + 4];
-            uint[4] memory y;
-            y[0] = pubSignals[NUM_PRICES * 4 + 8 * i + 5];
-            y[1] = pubSignals[NUM_PRICES * 4 + 8 * i + 6];
-            y[2] = pubSignals[NUM_PRICES * 4 + 8 * i + 7];
-            y[3] = pubSignals[NUM_PRICES * 4 + 8 * i + 8];
-            if (!verifyPublicKey(x, y)) {
-                revert (string(abi.encodePacked("publicKey ", Strings.toString(i), " not match")));
-            }
-            // Check msgHash
             bytes32[3] memory reportContext = reportContexts[i];
             bytes memory reportData = reportDatum[i];
             bytes32 hasedReport = keccak256(reportData);
             bytes32 msgHash = keccak256(abi.encodePacked(hasedReport, reportContext));
-            bytes32 givenMsgHash = 0;
-            givenMsgHash |= bytes32(uint256(pubSignals[4 * i + 1])) << 0;
-            givenMsgHash |= bytes32(uint256(pubSignals[4 * i + 2])) << 64;
-            givenMsgHash |= bytes32(uint256(pubSignals[4 * i + 3])) << 128;
-            givenMsgHash |= bytes32(uint256(pubSignals[4 * i + 4])) << 192;
-            if (givenMsgHash != msgHash) {
-                revert (string(abi.encodePacked("msgHash ", Strings.toString(i), " not match")));
-            }
+            aggregatedMsgHashs = abi.encodePacked(aggregatedMsgHashs, msgHash);
+        }
+        bytes32 aggregatedMsgHashsHash = sha256(aggregatedMsgHashs);
+        bytes16 aggregatedMsgHashsHashFirstHalf = bytes16(aggregatedMsgHashsHash);
+        bytes16 aggregatedMsgHashsHashSecondHalf = bytes16(aggregatedMsgHashsHash << 128);
+        aggregatedMsgHashsHashFirstHalf = reverseBinaryBytes16(aggregatedMsgHashsHashFirstHalf);
+        aggregatedMsgHashsHashSecondHalf = reverseBinaryBytes16(aggregatedMsgHashsHashSecondHalf);
+        bytes16 expectedFirstHalf = bytes16(bytes32(uint256(pubSignals[1]) << 128));
+        bytes16 expectedSecondHalf = bytes16(bytes32(uint256(pubSignals[2]) << 128));
+        if (aggregatedMsgHashsHashFirstHalf != expectedFirstHalf || aggregatedMsgHashsHashSecondHalf != expectedSecondHalf) {
+            revert("aggregatedMsgHashsHash not match");
+        }
+
+        for (uint i = 0; i < NUM_PRICES; i++) {
+            bytes memory reportData = reportDatum[i];
             priceReports[i] = abi.decode(reportData,(PriceReport));
         }
-        // Check signatures 
+
+        // Check signatures
         if (verifyProof(pA, pB, pC, pubSignals) == false) {
             revert("verifyProof failed");
         }
