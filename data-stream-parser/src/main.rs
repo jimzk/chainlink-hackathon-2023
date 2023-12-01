@@ -72,7 +72,7 @@ fn main() {
     println!();
 
     let circom_build_dir = format!(
-        "../circom-ecdsa-batch/build/batch_ecdsa_verify_{}",
+        "../circom/build/verify_{}",
         price_num
     );
     println!("Circuit artifacts directory: {}", circom_build_dir);
@@ -90,11 +90,11 @@ fn main() {
     Command::new("node")
         .current_dir(&circom_build_dir)
         .arg(format!(
-            "./batch_ecdsa_verify_{}_js/generate_witness.js",
+            "./verify_{}_js/generate_witness.js",
             price_num
         ))
         .arg(format!(
-            "./batch_ecdsa_verify_{}_js/batch_ecdsa_verify_{}.wasm",
+            "./verify_{}_js/verify_{}.wasm",
             price_num, price_num
         ))
         .arg("./input.json")
@@ -111,7 +111,7 @@ fn main() {
         .arg("snarkjs")
         .arg("groth16")
         .arg("prove")
-        .arg(format!("./batch_ecdsa_verify_{}.zkey", price_num))
+        .arg("./final.zkey")
         .arg("./witness.wtns")
         .arg("./proof.json")
         .arg("./public.json")
