@@ -3,6 +3,14 @@ This project is an entry for [Chainlink hackthon 2023 | Nov 8 - Dec 10](https://
 
 ## Introduction
 
+| The number of prices | Constraints | Gas cost of our verification on EVM | Gas cost of current verification on EVM [1] |
+| -------------------- | ----------- | ----------------------------------- | ------------------------------------------- |
+| 2                    | 2,296,105   | 345,731                             | ~240,000                                    |
+| 4                    | 3,522,039   | 373,257                             | ~480,000                                    |
+| 8                    | 5,973,907   | 431,465                             | ~960,000                                    |
+| 16                   | 10,877,643  | 554,193                             | ~1,920,000                                  |
+
+[1] Gas cost of pure single price verification is roughly 120,000, which is estimated based on [the real gas cost](https://sepolia.arbiscan.io/tx/0x5c0954edaa09915af7f3e033424354e1711d155189592825d406f0ac6daf7c9f) onchain.
 
 ## How to use
 
