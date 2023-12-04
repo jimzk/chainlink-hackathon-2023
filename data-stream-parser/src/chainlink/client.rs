@@ -4,8 +4,7 @@ use reqwest::{blocking::Client, Url};
 
 pub fn get_data_stream_report(feed_id: &str, timestamp: i64) -> serde_json::Value {
     let client_id = env::var("CLIENT_ID").expect("environment variable CLIENT_ID");
-    let client_secret =
-        env::var("CLIENT_SECRET").expect("environment variable CLIENT_SECRET");
+    let client_secret = env::var("CLIENT_SECRET").expect("environment variable CLIENT_SECRET");
     let base_url =
         env::var("BASE_URL").unwrap_or("https://api.testnet-dataengine.chain.link".to_string());
     let current_timestamp_millis = now_timestamp_millis();

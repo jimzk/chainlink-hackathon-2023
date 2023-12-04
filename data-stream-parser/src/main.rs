@@ -1,5 +1,6 @@
 use std::{fs::File, process::Command};
 
+use chainlink::report::V2Report;
 use serde_json::Value;
 
 use crate::{
@@ -25,6 +26,7 @@ fn main() {
     let mut batch_input = batch_input::BatchInput::new();
     let mut report_contexts = vec![];
     let mut reports_blobs = vec![];
+    let mut prices_json: Vec<Value> = vec![];
     for timestamp in timestamps {
         let value = get_data_stream_report(feed_id, timestamp);
         let data = value["report"]["fullReport"]
@@ -48,6 +50,8 @@ fn main() {
 
         println!("[Fetching price at {}]", timestamp);
         println!("price info = \n{}", report);
+        let report_json = serialize_report(&value, &full_report, &report);
+        prices_json.push(report_json);
         let signature = {
             let mut bytes = [0u8; 65];
             bytes[0..32].copy_from_slice(&full_report.raw_rs[0]);
@@ -63,18 +67,24 @@ fn main() {
             digest.clone(),
         )
     }
-    let report_contexts = Value::Array(report_contexts);
-    let reports_blobs = Value::Array(reports_blobs);
-    let reports_json = Value::Array(vec![report_contexts, reports_blobs]);
-    let filename = format!("./reports.json",);
-    let output = File::create(&filename).unwrap();
-    serde_json::to_writer_pretty(output, &reports_json).unwrap();
+    {
+        let report_contexts = Value::Array(report_contexts);
+        let reports_blobs = Value::Array(reports_blobs);
+        let reports_json = Value::Array(vec![report_contexts, reports_blobs]);
+        let filename = format!("./reports.json",);
+        let output = File::create(&filename).unwrap();
+        serde_json::to_writer_pretty(output, &reports_json).unwrap();
+    }
+    {
+        let prices_json = Value::Array(prices_json);
+        let filename = format!("./prices.json",);
+        let output = File::create(&filename).unwrap();
+        serde_json::to_writer_pretty(output, &prices_json).unwrap();
+    }
+
     println!();
 
-    let circom_build_dir = format!(
-        "../circom/build/verify_{}",
-        price_num
-    );
+    let circom_build_dir = format!("../circom/build/verify_{}", price_num);
     println!("Circuit artifacts directory: {}", circom_build_dir);
     println!("Starting to generate circuit proof...");
 
@@ -89,10 +99,7 @@ fn main() {
     println!("[2] Generating witness...");
     Command::new("node")
         .current_dir(&circom_build_dir)
-        .arg(format!(
-            "./verify_{}_js/generate_witness.js",
-            price_num
-        ))
+        .arg(format!("./verify_{}_js/generate_witness.js", price_num))
         .arg(format!(
             "./verify_{}_js/verify_{}.wasm",
             price_num, price_num
@@ -134,4 +141,23 @@ fn main() {
     //     .expect("failed to verify proof");
     // println!("Output: {:?}", output);
     println!("Done!");
+}
+
+fn serialize_report(report: &Value, full_report: &FullReport, report_detail: &V2Report) -> Value {
+    let mut report: Value = report["report"].clone();
+    // let mut my_map: HashMap<String, i32> = HashMap::new();
+    let report_detail_json: Value = serde_json::from_str(&report_detail.to_string()).unwrap();
+    let mut full_report_json = serde_json::json!({
+        "reportContext": [
+            format!("0x{}", hex::encode(&full_report.report_context[0])),
+            format!("0x{}", hex::encode(&full_report.report_context[1])),
+            format!("0x{}", hex::encode(&full_report.report_context[2])),
+        ],
+        "rawRs": format!("0x{}", hex::encode(&full_report.raw_rs[0])),
+        "rawSs": format!("0x{}", hex::encode(&full_report.raw_ss[0])),
+        "rawVs": format!("0x{}", hex::encode(&full_report.raw_vs)),
+    });
+    full_report_json["report"] = report_detail_json;
+    report["fullReport"] = full_report_json;
+    report
 }

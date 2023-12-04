@@ -1,2 +1,2 @@
-pub mod circom;
 pub mod chainlink;
+pub mod circom;
